@@ -35,13 +35,6 @@ tls = false
 user =
 password =
 
-; before use:
-; 1. Access to https://api.slack.com/apps
-; 2. Create New App
-; 3. Click "Incoming Webhooks" on menu
-; 4. Activate and "Add New Webhook"
-; 5. Paste Webhook URL to webhook-url
-
 [slack]
 ; when to send an Slack, comma-separated list of [success, error]
 sendon = success,error

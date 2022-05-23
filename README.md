@@ -1,4 +1,4 @@
-# Snapraid Runner Script
+# Snapraid Runner Script with Slack support
 
 This script runs snapraid and sends its output to the console, a log file and
 via email. All this is configurable.
@@ -18,6 +18,14 @@ It supports Windows, Linux and macOS and requires at least python3.7.
   `snapraid.config`.
 * Run the script via `python3 snapraid-runner.py` on Linux or
  `py -3 snapraid-runner.py` on Windows.
+
+### Setup send report to Slack
+
+1. Access to https://api.slack.com/apps
+2. Create New App
+3. Click `Incoming Webhooks` on menu
+4. Activate Incoming Webhooks and `Add New Webhook`
+5. Paste Webhook URL to `webhook-url` on *.conf file
 
 ## Features
 * Runs `diff` before `sync` to see how many files were deleted and aborts if
