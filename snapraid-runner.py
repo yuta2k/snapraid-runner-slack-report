@@ -15,6 +15,7 @@ from io import StringIO
 # Global variables
 config = None
 email_log = None
+slack_log = None
 
 
 def tee_log(infile, out_lines, log_level):
@@ -116,12 +117,81 @@ def send_email(success):
     server.quit()
 
 
+def send_slack(success):
+    import urllib.request
+    import json
+
+    if len(config["slack"]["webhook-url"]) == 0:
+        logging.error("Failed to send Slack because Webhook URL is not set")
+        return
+
+    header_text = config["slack"]["header"] + \
+        (" :white_check_mark: SUCCESS" if success else " :warning: ERROR")
+    if success:
+        message_text = "SnapRAID job completed successfully:\n\n\n"
+    else:
+        header_text = "\n".join([config["slack"]["header-prefix-when-error"], header_text])
+        message_text = "Error during SnapRAID job:\n\n\n"
+
+    log = slack_log.getvalue()
+    maxsize = config['slack'].get('maxsize', 2) * 1024
+    if maxsize and len(log) > maxsize:
+        cut_lines = log.count("\n", maxsize // 2, -maxsize // 2)
+        log = (
+            "NOTE: Log was too big for slack and was shortened\n\n" +
+            log[:maxsize // 2] +
+            "[...]\n\n\n --- LOG WAS TOO BIG - {} LINES REMOVED --\n\n\n[...]".format(
+                cut_lines) +
+            log[-maxsize // 2:])
+    message_text += slack_log.getvalue()
+
+    http_header = {
+        'Content-Type': 'application/json',
+    }
+    # Use "Secondary message attachments" for show "Show More..."
+    http_data = {
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn", # for mentioning
+                    "text": header_text
+                }
+            }
+        ],
+        "attachments": [
+            {
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "plain_text",
+                            "text": message_text
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+    http_request = urllib.request.Request(config["slack"]["webhook-url"], \
+        json.dumps(http_data).encode(), http_header)
+    with urllib.request.urlopen(http_request) as http_responce:
+        if http_responce.getcode() != 200:
+            raise Exception(f"Post to Slack failed. HTTP Status: {http_responce.getcode()}")
+
+
 def finish(is_success):
     if ("error", "success")[is_success] in config["email"]["sendon"]:
         try:
             send_email(is_success)
         except Exception:
             logging.exception("Failed to send email")
+    if ("error", "success")[is_success] in config["slack"]["sendon"]:
+        try:
+            send_slack(is_success)
+        except Exception:
+            logging.exception("Failed to send slack")
     if is_success:
         logging.info("Run finished successfully")
     else:
@@ -133,7 +203,7 @@ def load_config(args):
     global config
     parser = configparser.RawConfigParser()
     parser.read(args.conf)
-    sections = ["snapraid", "logging", "email", "smtp", "scrub"]
+    sections = ["snapraid", "logging", "email", "smtp", "slack", "scrub"]
     config = dict((x, defaultdict(lambda: "")) for x in sections)
     for section in parser.sections():
         for (k, v) in parser.items(section):
@@ -142,6 +212,7 @@ def load_config(args):
     int_options = [
         ("snapraid", "deletethreshold"), ("logging", "maxsize"),
         ("scrub", "older-than"), ("email", "maxsize"),
+        ("slack", "maxsize")
     ]
     for section, option in int_options:
         try:
@@ -153,6 +224,7 @@ def load_config(args):
     config["smtp"]["tls"] = (config["smtp"]["tls"].lower() == "true")
     config["scrub"]["enabled"] = (config["scrub"]["enabled"].lower() == "true")
     config["email"]["short"] = (config["email"]["short"].lower() == "true")
+    config["slack"]["short"] = (config["slack"]["short"].lower() == "true")
     config["snapraid"]["touch"] = (config["snapraid"]["touch"].lower() == "true")
 
     # Migration
@@ -197,6 +269,17 @@ def setup_logger():
             # Don't send programm stdout in email
             email_logger.setLevel(logging.INFO)
         root_logger.addHandler(email_logger)
+
+    if config["slack"]["sendon"]:
+        global slack_log
+        slack_log = StringIO()
+        slack_logger = logging.StreamHandler(slack_log)
+        slack_logger.setFormatter(log_format)
+        if config["slack"]["short"]:
+            # Don't send program stdout to Slack
+            slack_logger.setLevel(logging.INFO)
+        root_logger.addHandler(slack_logger)
+        root_logger.addHandler(file_logger)
 
 
 def main():
