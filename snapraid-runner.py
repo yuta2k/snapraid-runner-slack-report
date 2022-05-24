@@ -128,10 +128,10 @@ def send_slack(success):
     header_text = config["slack"]["header"] + \
         (" :white_check_mark: SUCCESS" if success else " :warning: ERROR")
     if success:
-        message_text = "SnapRAID job completed successfully:\n\n\n"
+        message_text = "SnapRAID job completed successfully:\n\n"
     else:
         header_text = "\n".join([config["slack"]["header-prefix-when-error"], header_text])
-        message_text = "Error during SnapRAID job:\n\n\n"
+        message_text = "Error during SnapRAID job:\n\n"
 
     log = slack_log.getvalue()
     maxsize = config['slack'].get('maxsize', 2) * 1024
